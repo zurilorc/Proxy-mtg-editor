@@ -1,0 +1,16 @@
+{
+  "name": "Proxy Forge – proxies Magic",
+  "short_name": "Proxy Forge",
+  "description": "Générateur de proxies Magic: The Gathering avec ta propre illustration.",
+  "lang": "fr",
+  "start_url": "./#search",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16131c",
+  "theme_color": "#16131c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

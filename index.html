@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Proxy Forge</title>
+  <meta name="description" content="Générateur de proxies Magic: The Gathering avec ta propre illustration, retouchée ou mélangée par IA.">
+  <meta name="theme-color" content="#16131c">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Proxy Forge">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <img src="icons/icon.svg" alt="" width="28" height="28">
+    <h1>Proxy Forge</h1>
+  </header>
+
+  <main>
+    <!-- ============ RECHERCHE ============ -->
+    <section class="view" data-view="search" id="view-search">
+      <form id="search-form" class="search-box" role="search" autocomplete="off">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.05l4.25 4.24-1.42 1.42-4.24-4.25A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+        <input id="q" type="search" placeholder="Nom d’une carte (français ou anglais)" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Nom de la carte" aria-controls="suggestions">
+      </form>
+      <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
+
+      <div class="chip-row">
+        <button type="button" id="btn-filters" class="chip" aria-expanded="false">Filtres <span id="filter-count" class="count" hidden></span></button>
+        <button type="button" id="btn-random" class="chip">Au hasard</button>
+        <button type="button" id="btn-import" class="chip">Importer une decklist</button>
+      </div>
+
+      <form id="filters" class="panel filters" hidden>
+        <fieldset>
+          <legend>Couleurs</legend>
+          <div class="mana-row" id="f-colors">
+            <button type="button" class="mana" data-c="w" aria-pressed="false"><img src="https://svgs.scryfall.io/card-symbols/W.svg" alt="Blanc"></button>
+            <button type="button" class="mana" data-c="u" aria-pressed="false"><img src="https://svgs.scryfall.io/card-symbols/U.svg" alt="Bleu"></button>
+            <button type="button" class="mana" data-c="b" aria-pressed="false"><img src="https://svgs.scryfall.io/card-symbols/B.svg" alt="Noir"></button>
+            <button type="button" class="mana" data-c="r" aria-pressed="false"><img src="https://svgs.scryfall.io/card-symbols/R.svg" alt="Rouge"></button>
+            <button type="button" class="mana" data-c="g" aria-pressed="false"><img src="https://svgs.scryfall.io/card-symbols/G.svg" alt="Vert"></button>
+            <button type="button" class="mana" data-c="c" aria-pressed="false"><img src="https://svgs.scryfall.io/card-symbols/C.svg" alt="Incolore"></button>
+          </div>
+          <select id="f-color-mode" aria-label="Mode de couleur">
+            <option value="c>=">Contient au moins ces couleurs</option>
+            <option value="c=">Exactement ces couleurs</option>
+            <option value="id<=">Jouable dans ce commandant (identité)</option>
+          </select>
+        </fieldset>
+        <div class="grid2">
+          <label>Type
+            <select id="f-type">
+              <option value="">Tous</option>
+              <option value="creature">Créature</option>
+              <option value="instant">Éphémère</option>
+              <option value="sorcery">Rituel</option>
+              <option value="artifact">Artefact</option>
+              <option value="enchantment">Enchantement</option>
+              <option value="planeswalker">Planeswalker</option>
+              <option value="land">Terrain</option>
+              <option value="battle">Bataille</option>
+            </select>
+          </label>
+          <label>Rareté
+            <select id="f-rarity">
+              <option value="">Toutes</option>
+              <option value="c">Commune</option>
+              <option value="u">Inhabituelle</option>
+              <option value="r">Rare</option>
+              <option value="m">Mythique</option>
+            </select>
+          </label>
+          <label>Valeur de mana
+            <span class="inline">
+              <select id="f-mv-op" aria-label="Comparaison">
+                <option value="=">=</option>
+                <option value="<=">≤</option>
+                <option value=">=">≥</option>
+              </select>
+              <input id="f-mv" type="number" min="0" max="20" inputmode="numeric" placeholder="—">
+            </span>
+          </label>
+          <label>Extension (code)
+            <input id="f-set" type="text" placeholder="ex. dmu, cmm" autocapitalize="off" spellcheck="false">
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" id="f-legendary"> Légendaire uniquement (commandants…)</label>
+        <label>Texte de règles (en anglais)
+          <input id="f-oracle" type="text" placeholder="ex. draw a card" autocapitalize="off">
+        </label>
+        <label>Syntaxe Scryfall avancée
+          <input id="f-raw" type="text" placeholder="ex. kw:flying pow>=4 is:commander" autocapitalize="off" spellcheck="false">
+        </label>
+        <div class="actions">
+          <button type="reset" class="btn ghost">Réinitialiser</button>
+          <button type="submit" class="btn primary">Rechercher</button>
+        </div>
+      </form>
+
+      <p id="results-info" class="muted small" hidden></p>
+      <div id="results" class="card-grid"></div>
+      <button type="button" id="btn-more" class="btn wide" hidden>Plus de résultats</button>
+
+      <div id="search-intro" class="intro">
+        <h2>Crée tes proxies avec ton propre art</h2>
+        <ol>
+          <li>Cherche une carte par son nom, en français ou en anglais, ou avec les filtres.</li>
+          <li>Choisis la langue et l’édition, puis ajoute une photo de ton téléphone.</li>
+          <li>Optionnel : laisse l’IA mélanger ta photo avec l’illustration officielle.</li>
+          <li>Ajoute la carte à la planche et imprime le PDF A4 (9 cartes par page).</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ ÉDITEUR ============ -->
+    <section class="view" data-view="editor" id="view-editor">
+      <div id="editor-empty" class="intro">
+        <h2>Aucune carte sélectionnée</h2>
+        <p>Choisis une carte dans l’onglet <a href="#search">Chercher</a>.</p>
+      </div>
+
+      <div id="editor" class="editor" hidden>
+        <div class="preview-col">
+          <div class="card-head">
+            <h2 id="ed-name"></h2>
+            <p id="ed-sub" class="muted small"></p>
+          </div>
+          <div class="preview-wrap" id="preview-wrap">
+            <canvas id="preview" width="745" height="1040" aria-label="Aperçu de la carte"></canvas>
+            <div id="zone" class="zone" hidden>
+              <span class="handle" data-h="nw"></span><span class="handle" data-h="ne"></span>
+              <span class="handle" data-h="sw"></span><span class="handle" data-h="se"></span>
+            </div>
+            <div id="preview-loading" class="veil" hidden><span class="spinner"></span></div>
+          </div>
+          <div class="seg" id="mode-seg" role="tablist" aria-label="Mode d’édition">
+            <button type="button" data-mode="image" class="on">Déplacer l’image</button>
+            <button type="button" data-mode="zone">Ajuster la zone</button>
+          </div>
+          <label id="zoom-row" class="range zoom-row" hidden><span>Zoom</span><input id="ed-zoom" type="range" min="1" max="4" step="0.01" value="1"></label>
+          <p id="mode-hint" class="muted small center"></p>
+          <p id="ed-warning" class="warn" hidden></p>
+        </div>
+
+        <div class="controls-col">
+          <div class="panel">
+            <div class="grid2">
+              <label>Langue <select id="ed-lang"></select></label>
+              <label id="ed-face-wrap" hidden>Face <select id="ed-face"></select></label>
+            </div>
+            <div class="label-row"><span>Édition</span><span id="ed-print-count" class="muted small"></span></div>
+            <div id="ed-prints" class="strip prints"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Illustration</h3>
+            <div class="btn-row">
+              <label class="btn primary file-btn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1.8 2H20a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3.2L9 3Zm3 5a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>
+                Ajouter une photo
+                <input id="ed-file" type="file" accept="image/*">
+              </label>
+            </div>
+            <div id="ed-sources" class="strip sources"></div>
+            <div id="art-controls" hidden>
+              <label class="range"><span>Luminosité</span><input id="ed-b" type="range" min="-60" max="60" step="1" value="0"></label>
+              <label class="range"><span>Contraste</span><input id="ed-c" type="range" min="-60" max="60" step="1" value="0"></label>
+              <label class="range"><span>Saturation</span><input id="ed-s" type="range" min="-100" max="80" step="1" value="0"></label>
+              <label class="range"><span>Harmonie avec l’original</span><input id="ed-harmony" type="range" min="0" max="100" step="1" value="0"></label>
+              <div class="btn-row">
+                <button type="button" id="ed-recenter" class="btn small">Recentrer</button>
+                <button type="button" id="ed-reset-adj" class="btn small ghost">Réinitialiser les réglages</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel ai-panel">
+            <h3>Mélange IA <span class="tag" id="ai-model-tag"></span></h3>
+            <p id="ai-nokey" class="note" hidden>Ajoute ta clé API dans <a href="#settings">Réglages</a> pour activer l’IA.</p>
+            <div id="ai-presets" class="presets" role="radiogroup" aria-label="Type de mélange"></div>
+            <p id="ai-hint" class="muted small"></p>
+            <label class="check"><input type="checkbox" id="ai-theme" checked> S’inspirer du thème de la carte</label>
+            <label>Instructions en plus (facultatif)
+              <textarea id="ai-extra" rows="2" placeholder="ex. ambiance nocturne, style estampe japonaise…"></textarea>
+            </label>
+            <div class="btn-row">
+              <button type="button" id="ai-go" class="btn primary grow">Générer</button>
+              <button type="button" id="ai-cancel" class="btn ghost" hidden>Annuler</button>
+            </div>
+            <p id="ai-status" class="muted small" aria-live="polite"></p>
+          </div>
+
+          <div class="panel">
+            <label class="check"><input type="checkbox" id="ed-proxy"> Mention « PROXY » en bas de la carte</label>
+            <label class="check"><input type="checkbox" id="ed-outline" checked> Liseré autour de l’illustration</label>
+          </div>
+
+          <div class="action-bar">
+            <div class="qty" aria-label="Quantité">
+              <button type="button" data-d="-1" aria-label="Moins">−</button>
+              <span id="ed-qty">1</span>
+              <button type="button" data-d="1" aria-label="Plus">+</button>
+            </div>
+            <button type="button" id="ed-add" class="btn primary grow">Ajouter<span class="wide-only">à la planche</span></button>
+            <button type="button" id="ed-share" class="btn icon" aria-label="Partager l’image" title="Partager / enregistrer l’image">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6 16.7 7.3l-1.4 1.4L13 6.4V15h-2V6.4L8.7 8.7 7.3 7.3 12 2.6ZM5 11h3v2H6v7h12v-7h-2v-2h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PLANCHE ============ -->
+    <section class="view" data-view="sheet" id="view-sheet">
+      <h2>Planche d’impression</h2>
+      <p id="sheet-summary" class="muted"></p>
+      <div id="sheet-list" class="sheet-list"></div>
+      <div id="sheet-empty" class="intro" hidden>
+        <p>La planche est vide. Ajoute des cartes depuis l’éditeur, ou importe une decklist depuis l’onglet <a href="#search">Chercher</a>.</p>
+      </div>
+
+      <div class="panel" id="pdf-panel">
+        <h3>Export PDF</h3>
+        <div class="grid2">
+          <label>Format
+            <select id="pdf-page">
+              <option value="a4">A4</option>
+              <option value="letter">US Letter</option>
+            </select>
+          </label>
+          <label>Espace entre cartes
+            <select id="pdf-gap">
+              <option value="0">0 mm</option>
+              <option value="1">1 mm</option>
+              <option value="2">2 mm</option>
+              <option value="3">3 mm</option>
+            </select>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" id="pdf-marks" checked> Traits de coupe</label>
+        <button type="button" id="pdf-go" class="btn primary wide">Générer le PDF</button>
+        <p class="note">Imprime à <strong>100 % / taille réelle</strong> (pas « ajuster à la page ») pour obtenir des cartes de 63 × 88 mm.</p>
+      </div>
+      <button type="button" id="sheet-clear" class="btn danger-ghost">Vider la planche</button>
+    </section>
+
+    <!-- ============ RÉGLAGES ============ -->
+    <section class="view" data-view="settings" id="view-settings">
+      <h2>Réglages</h2>
+      <div class="panel">
+        <h3>IA (mélange d’images)</h3>
+        <label>Fournisseur
+          <select id="set-provider">
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </label>
+        <label>Clé API
+          <span class="inline">
+            <input id="set-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle ta clé ici">
+            <button type="button" id="set-key-toggle" class="btn small">Voir</button>
+          </span>
+        </label>
+        <p class="small"><a id="set-key-link" href="#" target="_blank" rel="noopener">Obtenir une clé</a></p>
+        <button type="button" id="set-test" class="btn">Tester la clé et charger les modèles</button>
+        <p id="set-test-status" class="muted small" aria-live="polite"></p>
+        <label>Modèle
+          <select id="set-model"></select>
+        </label>
+        <label id="set-quality-wrap">Qualité (OpenAI)
+          <select id="set-quality">
+            <option value="low">Basse (moins chère)</option>
+            <option value="medium">Moyenne</option>
+            <option value="high">Haute (plus chère)</option>
+          </select>
+        </label>
+        <p class="note">La clé reste sur cet appareil et n’est envoyée qu’à Google ou OpenAI. Chaque image générée est facturée sur ton compte selon leurs tarifs. N’utilise pas cette page avec ta clé sur un appareil partagé.</p>
+      </div>
+      <div class="panel">
+        <h3>Cartes</h3>
+        <label>Langue par défaut <select id="set-lang"></select></label>
+        <label class="check"><input type="checkbox" id="set-proxy"> Mention « PROXY » activée par défaut</label>
+      </div>
+      <div class="panel">
+        <h3>À propos</h3>
+        <p class="small muted">Données et images des cartes : <a href="https://scryfall.com" target="_blank" rel="noopener">Scryfall</a>. Outil de fan non officiel, sans lien avec Wizards of the Coast. Magic: The Gathering est une marque de Wizards of the Coast LLC. Les proxies servent au jeu entre amis : pas de vente, pas de tournoi officiel.</p>
+        <button type="button" id="set-wipe" class="btn danger-ghost">Effacer toutes les données locales</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="Navigation">
+    <a href="#search" data-tab="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.96 12.05l4.25 4.24-1.42 1.42-4.24-4.25A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+      <span>Chercher</span>
+    </a>
+    <a href="#editor" data-tab="editor">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h12V4H6Zm2 2h8v6H8V6Zm0 8h8v1.5H8V14Zm0 3h5v1.5H8V17Z"/></svg>
+      <span>Éditer</span>
+    </a>
+    <a href="#sheet" data-tab="sheet">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 2v16h12V8h-4V4H6Zm2 8h3v4H8v-4Zm5 0h3v4h-3v-4Z"/></svg>
+      <span>Planche</span>
+      <b id="sheet-badge" class="badge" hidden></b>
+    </a>
+    <a href="#settings" data-tab="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13.7 2 .5 2.6c.6.2 1.1.5 1.6.9l2.5-.9 1.7 3-2 1.7c.1.6.1 1.2 0 1.8l2 1.7-1.7 3-2.5-.9c-.5.4-1 .7-1.6.9l-.5 2.6h-3.4l-.5-2.6c-.6-.2-1.1-.5-1.6-.9l-2.5.9-1.7-3 2-1.7a5.6 5.6 0 0 1 0-1.8l-2-1.7 1.7-3 2.5.9c.5-.4 1-.7 1.6-.9L10.3 2h3.4ZM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/></svg>
+      <span>Réglages</span>
+    </a>
+  </nav>
+
+  <dialog id="import-dialog" aria-labelledby="import-title">
+    <div class="dialog-body">
+      <h3 id="import-title">Importer une decklist</h3>
+      <p class="muted small">Colle ta liste (Moxfield, Archidekt, MTG Arena…) : une carte par ligne, par exemple « 1 Sol Ring » ou « 1 Sol Ring (C21) 263 ». Les cartes sont ajoutées à la planche avec leur illustration d’origine.</p>
+      <textarea id="import-text" rows="9" placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;1 Command Tower"></textarea>
+      <div class="grid2">
+        <label>Langue <select id="import-lang"></select></label>
+        <label class="check pad-top"><input type="checkbox" id="import-skip-basics" checked> Ignorer les terrains de base</label>
+      </div>
+      <p id="import-progress" class="muted small" aria-live="polite"></p>
+      <div class="actions">
+        <button type="button" id="import-cancel" class="btn ghost">Fermer</button>
+        <button type="button" id="import-go" class="btn primary">Importer</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="ready-dialog" aria-labelledby="ready-title">
+    <div class="dialog-body">
+      <h3 id="ready-title">Fichier prêt</h3>
+      <p class="muted small"><span id="ready-name"></span> est prêt à être partagé ou enregistré.</p>
+      <div class="actions">
+        <button type="button" id="ready-close" class="btn ghost">Fermer</button>
+        <button type="button" id="ready-share" class="btn primary">Partager / enregistrer</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

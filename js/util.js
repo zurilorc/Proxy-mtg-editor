@@ -153,12 +153,12 @@ export function base64ToBlob(b64, type = 'image/png') {
 }
 
 // Partage natif sur téléphone (feuille de partage iOS / Android), téléchargement sinon.
-export async function shareOrDownload(blob, filename, title, { forceDownloadOnBlock = false } = {}) {
-  const file = new File([blob], filename, { type: blob.type });
+// Retourne 'shared', 'cancelled', 'downloaded' ou 'blocked' (partage refusé faute de geste récent).
+export async function shareFiles(files, { title, forceDownloadOnBlock = false } = {}) {
   const touch = window.matchMedia?.('(pointer: coarse)').matches;
-  if (touch && navigator.canShare && navigator.canShare({ files: [file] })) {
+  if (touch && navigator.canShare && navigator.canShare({ files })) {
     try {
-      await navigator.share({ files: [file], title });
+      await navigator.share({ files, title });
       return 'shared';
     } catch (e) {
       if (e.name === 'AbortError') return 'cancelled';
@@ -166,8 +166,12 @@ export async function shareOrDownload(blob, filename, title, { forceDownloadOnBl
       /* sinon on retombe sur le téléchargement */
     }
   }
-  download(blob, filename);
+  for (const f of files) download(f, f.name);
   return 'downloaded';
+}
+
+export function toFile(blob, filename) {
+  return new File([blob], filename, { type: blob.type });
 }
 
 export function download(blob, filename) {

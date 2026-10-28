@@ -1,6 +1,6 @@
 import {
   $, $$, h, debounce, toast, storage, dims, blobToImage, fetchImage, makeCanvas, downscale,
-  canvasToBlob, shareOrDownload, slug, idb, uid,
+  canvasToBlob, shareFiles, toFile, slug, idb, uid,
 } from './util.js';
 import * as sf from './scryfall.js';
 import { detectArtRect, defaultRect } from './artbox.js';
@@ -19,6 +19,7 @@ const settings = {
   model: { gemini: 'auto', openai: 'auto' },
   models: { gemini: [], openai: [] },
   quality: 'medium',
+  aiMode: 'app', // 'app' = app Gemini gratuite, 'api' = génération automatique avec clé
   lang: 'fr',
   proxyMark: true,
   ...storage.get('pf-settings', {}),
@@ -474,6 +475,7 @@ function draw() {
 }
 
 function processArt() {
+  refreshGemini();
   const src = activeSource();
   ed.artCanvas = src ? adjustArt(src.img, ed.adj, ed.origArt) : null;
   $('#art-controls').hidden = !src;
@@ -545,25 +547,28 @@ async function addSource(blob, kind, label) {
   return s;
 }
 
-$('#ed-file').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  e.target.value = '';
+// Photo du téléphone ou image créée dans l'app Gemini.
+async function importImage(input, kind, label, message) {
+  const file = input.files?.[0];
+  input.value = '';
   if (!file) return;
   setLoading(true);
   try {
     // On ré-encode en JPEG raisonnable : plus léger à stocker et à envoyer à l'IA.
     const img = await blobToImage(file);
-    const c = downscale(img, 2048);
-    const blob = await canvasToBlob(c, 'image/jpeg', 0.92);
-    const n = ed.sources.filter((s) => s.kind === 'photo').length + 1;
-    await addSource(blob, 'photo', n > 1 ? `Photo ${n}` : 'Photo');
-    toast('Photo ajoutée : fais-la glisser pour la cadrer.');
+    const blob = await canvasToBlob(downscale(img, 2048), 'image/jpeg', 0.92);
+    const n = ed.sources.filter((s) => s.kind === kind).length + 1;
+    await addSource(blob, kind, n > 1 ? `${label} ${n}` : label);
+    toast(message, 'ok');
   } catch (err) {
     toast(err.message, 'error');
   } finally {
     setLoading(false);
   }
-});
+}
+$('#ed-file').addEventListener('change', (e) =>
+  importImage(e.target, 'photo', 'Photo', 'Photo ajoutée : fais-la glisser pour la cadrer.'),
+);
 
 // ----- Réglages de l'illustration -----
 
@@ -843,7 +848,7 @@ $('#ed-share').addEventListener('click', async () => {
   try {
     const canvas = renderCard(makeCanvas(1, 1), renderState());
     const blob = await canvasToBlob(canvas, 'image/png');
-    await offerFile(blob, `${slug(itemName()) || 'carte'}-proxy.png`, itemName());
+    await offerFiles([toFile(blob, `${slug(itemName()) || 'carte'}-proxy.png`)], itemName());
   } catch (e) {
     toast(e.message, 'error');
   }
@@ -852,17 +857,18 @@ $('#ed-share').addEventListener('click', async () => {
 // Safari refuse parfois le partage s'il arrive trop longtemps après le geste de l'utilisateur :
 // on propose alors un bouton pour relancer le partage (nouveau geste = autorisé).
 const readyDialog = $('#ready-dialog');
-let readyFile = null;
-async function offerFile(blob, filename, title) {
-  const r = await shareOrDownload(blob, filename, title);
-  if (r !== 'blocked') return;
-  readyFile = { blob, filename, title };
-  $('#ready-name').textContent = filename;
+let readyFiles = null;
+async function offerFiles(files, title) {
+  const r = await shareFiles(files, { title });
+  if (r !== 'blocked') return r;
+  readyFiles = { files, title };
+  $('#ready-name').textContent = files.length > 1 ? `${files.length} fichiers` : files[0].name;
   readyDialog.showModal();
+  return r;
 }
 $('#ready-share').addEventListener('click', async () => {
   readyDialog.close();
-  if (readyFile) await shareOrDownload(readyFile.blob, readyFile.filename, readyFile.title, { forceDownloadOnBlock: true });
+  if (readyFiles) await shareFiles(readyFiles.files, { title: readyFiles.title, forceDownloadOnBlock: true });
 });
 $('#ready-close').addEventListener('click', () => readyDialog.close());
 
@@ -883,6 +889,7 @@ function renderPresets() {
         onclick: () => {
           ed.aiPreset = id;
           renderPresets();
+          refreshGemini();
         },
       }, p.label),
     ),
@@ -891,6 +898,11 @@ function renderPresets() {
 }
 
 function refreshAiPanel() {
+  const mode = settings.aiMode === 'api' ? 'api' : 'app';
+  $$('#ai-mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
+  $('#ai-app').hidden = mode !== 'app';
+  $('#ai-api').hidden = mode !== 'api';
+  if (mode === 'app') refreshGemini();
   const key = settings.keys[settings.provider];
   $('#ai-nokey').hidden = !!key;
   $('#ai-go').disabled = !key;
@@ -981,6 +993,106 @@ $('#ai-go').addEventListener('click', async () => {
   }
 });
 $('#ai-cancel').addEventListener('click', () => aiCtrl?.abort());
+
+$$('#ai-mode button').forEach((b) =>
+  b.addEventListener('click', () => {
+    settings.aiMode = b.dataset.mode;
+    saveSettings();
+    refreshAiPanel();
+  }),
+);
+
+// ----- Mode gratuit : l'utilisateur génère l'image dans l'app Gemini -----
+// Les images sont préparées à l'avance : sur iPhone, le partage doit partir
+// immédiatement après le toucher, sans attente.
+
+let gmPack = null;
+
+function gmKey() {
+  const p = ai.PRESETS[ed.aiPreset];
+  return [ed.print?.id, ed.face, ed.origArt ? 1 : 0, p.usesArt, p.needsPhoto && ed.active].join('|');
+}
+
+async function prepareGeminiFiles() {
+  const key = gmKey();
+  if (gmPack?.key === key) return gmPack.files;
+  const p = ai.PRESETS[ed.aiPreset];
+  const src = activeSource();
+  const files = [];
+  if (p.usesArt && ed.origArt) files.push(toFile(await toJpeg(ed.origArt, 1024), '1-illustration-originale.jpg'));
+  if (p.needsPhoto && src) files.push(toFile(await toJpeg(src.img, 1536), p.usesArt ? '2-ma-photo.jpg' : 'ma-photo.jpg'));
+  gmPack = { key, files };
+  return files;
+}
+
+function geminiPrompt() {
+  if (!ed.print) return '';
+  const f = sf.faces(ed.print)[ed.face] || {};
+  return ai.buildPromptFr(ed.aiPreset, {
+    cardName: f.printed_name || f.name || ed.print.name,
+    typeLine: f.type_line,
+    useTheme: $('#ai-theme').checked,
+    extra: $('#ai-extra').value.trim(),
+    ratioLabel: ed.rect ? ai.closestRatio(ed.rect.w / ed.rect.h) : '4:3',
+  });
+}
+
+const prefetchGemini = debounce(() => {
+  if (settings.aiMode !== 'api' && ed.base) prepareGeminiFiles().catch(() => {});
+}, 300);
+
+function refreshGemini() {
+  if (settings.aiMode === 'api') return;
+  $('#gm-prompt').value = geminiPrompt();
+  prefetchGemini();
+}
+$('#ai-theme').addEventListener('change', refreshGemini);
+$('#ai-extra').addEventListener('input', debounce(refreshGemini, 200));
+
+// Copie dans le presse-papiers, avec repli pour les navigateurs plus anciens.
+function copyText(text) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).then(() => true, () => copyFallback(text));
+  return Promise.resolve(copyFallback(text));
+}
+function copyFallback(text) {
+  const ta = h('textarea', { readonly: true, style: 'position:fixed;opacity:0;top:0' });
+  ta.value = text;
+  document.body.append(ta);
+  ta.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  return ok;
+}
+
+$('#gm-send').addEventListener('click', async () => {
+  if (!ed.base) return;
+  const p = ai.PRESETS[ed.aiPreset];
+  if (p.needsPhoto && !activeSource()) return toast('Ajoute d’abord une photo (bouton « Ajouter une photo »).', 'error');
+  if (p.usesArt && !ed.origArt) return toast('Illustration originale indisponible pour cette carte.', 'error');
+  const prompt = geminiPrompt();
+  $('#gm-prompt').value = prompt;
+  const copied = copyText(prompt);
+  const files = gmPack?.key === gmKey() ? gmPack.files : await prepareGeminiFiles();
+  const r = await offerFiles(files, 'Images pour Gemini');
+  const ok = await copied;
+  if (r === 'shared' || r === 'downloaded') {
+    toast(ok ? 'Consignes copiées ✓ Ouvre Gemini et colle-les avec les images.' : 'Images prêtes. Copie les consignes depuis « Voir les consignes ».', ok ? 'ok' : 'info', 5000);
+  }
+});
+
+$('#gm-copy').addEventListener('click', async () => {
+  const ok = await copyText($('#gm-prompt').value || geminiPrompt());
+  toast(ok ? 'Consignes copiées ✓' : 'Copie impossible : sélectionne le texte à la main.', ok ? 'ok' : 'error');
+});
+
+$('#gm-import').addEventListener('change', (e) =>
+  importImage(e.target, 'ai', 'Gemini', 'Image de Gemini importée ✓ Cadre-la si besoin.'),
+);
 
 // ============================================================
 // Brouillon : l'éditeur survit à un rechargement de la page
@@ -1160,7 +1272,7 @@ $('#pdf-go').addEventListener('click', async () => {
       gap: Number($('#pdf-gap').value),
       cutMarks: $('#pdf-marks').checked,
     });
-    await offerFile(pdf, 'proxies-magic.pdf', 'Proxies Magic');
+    await offerFiles([toFile(pdf, 'proxies-magic.pdf')], 'Proxies Magic');
   } catch (e) {
     toast(e.message, 'error');
   } finally {

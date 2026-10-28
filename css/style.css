@@ -243,6 +243,13 @@ legend { font-size: 0.85rem; font-weight: 600; color: var(--muted); padding: 0; 
 .range { display: grid; grid-template-columns: 9.5rem 1fr; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; color: var(--text); font-weight: 500; }
 .range input { width: 100%; accent-color: var(--accent); min-height: 32px; }
 
+.seg-inline { margin: 0 0 12px; max-width: none; }
+.steps { list-style: none; counter-reset: step; padding: 0; margin: 12px 0 8px; display: grid; gap: 12px; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 28px 1fr; gap: 6px 10px; align-items: center; }
+.steps li::before { content: counter(step); grid-row: span 2; align-self: start; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; display: grid; place-items: center; margin-top: 8px; }
+.steps li .btn { justify-self: start; }
+.prompt-box summary { cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--accent); min-height: 36px; display: flex; align-items: center; }
+.prompt-box textarea { font-size: 14px; margin: 6px 0 8px; }
 .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 0.5rem; }
 .preset { min-height: 48px; padding: 0.5rem 0.6rem; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); font-weight: 600; font-size: 0.85rem; cursor: pointer; text-align: left; line-height: 1.25; }
 .preset[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

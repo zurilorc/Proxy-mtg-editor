@@ -12,11 +12,15 @@ avec **ta propre illustration**. Tout le reste de la carte (cadre, texte, symbol
 - **Ta photo à la place de l'illustration** : la zone d'art est détectée automatiquement, quel que soit le
   cadre. Tu peux ensuite glisser et pincer pour cadrer, et régler luminosité, contraste, saturation et
   « harmonie » (reprise des couleurs de l'illustration originale). La zone reste ajustable à la main.
-- **Mélange IA** (avec ta clé Google Gemini ou OpenAI), quatre modes :
+- **Mélange IA**, quatre modes :
   - ta photo repeinte dans le style de l'illustration officielle ;
   - le sujet de ta photo intégré dans la scène originale ;
   - ta photo transformée en art fantasy ;
   - l'illustration originale réinterprétée selon tes instructions (ex. « style estampe japonaise »).
+
+  Par défaut, c'est **gratuit via l'app Gemini** : l'app prépare les images et les consignes, tu génères
+  dans Gemini, puis tu réimportes le résultat. Un mode automatique avec clé API (Gemini ou OpenAI)
+  existe aussi, mais il est payant à l'usage.
 - **Planche d'impression** avec quantités : PDF A4 (ou US Letter), 9 cartes par page au format réel
   63 × 88 mm, traits de coupe et espacement réglable.
 - **Partage** de chaque carte en image PNG (feuille de partage du téléphone).
@@ -40,23 +44,35 @@ en plein écran comme une vraie application. Sur Android : menu ⋮ de Chrome �
 > Le dépôt est public : n'importe qui peut ouvrir l'app, mais ta clé API et tes cartes restent stockées
 > uniquement sur ton téléphone.
 
-## Activer l'IA (Google Gemini recommandé)
+## Mélange IA gratuit avec l'app Gemini (mode par défaut)
 
-1. Va sur [Google AI Studio](https://aistudio.google.com/apikey) et crée une clé API.
-2. Dans l'app : **Réglages → Clé API**, colle la clé, puis **Tester la clé et charger les modèles**.
-3. Laisse le modèle sur **Automatique** : l'app choisit le modèle d'image « flash » le plus récent
-   disponible sur ton compte (rapide et moins cher). Tu peux en forcer un autre dans la liste.
+Il te faut seulement l'app Gemini (ou gemini.google.com) avec ton compte Google. Aucune clé, aucune facturation.
 
-OpenAI fonctionne aussi ([créer une clé](https://platform.openai.com/api-keys)) avec ses modèles `gpt-image`.
+1. Dans l'éditeur, ajoute ta photo, choisis un type de mélange et, si tu veux, des instructions.
+2. **Envoyer les images** : les consignes sont copiées dans le presse-papiers et la feuille de partage
+   s'ouvre. Choisis **Gemini** s'il apparaît, sinon **Enregistrer les images**.
+3. **Ouvrir Gemini** : ajoute les deux images si elles n'y sont pas déjà, colle les consignes et envoie.
+4. Enregistre l'image créée par Gemini, puis **Importer le résultat** dans l'app et cadre-la.
 
-**Coûts.** Chaque image générée est facturée sur ton compte Google ou OpenAI. Vérifie les tarifs à jour sur
-les pages officielles ([Gemini](https://ai.google.dev/gemini-api/docs/pricing),
-[OpenAI](https://openai.com/api/pricing/)) : ils changent souvent et dépendent du modèle et de la résolution.
-À titre indicatif, Google annonçait environ 0,039 $ par image pour Gemini 2.5 Flash Image à son lancement.
-Les modèles « pro » coûtent nettement plus cher.
+L'app Gemini applique un quota quotidien d'images gratuites, que Google ajuste régulièrement
+([aide Google](https://support.google.com/gemini/answer/14286560)). Si l'image porte un petit logo dans un
+coin, zoome légèrement pour le sortir du cadre.
+
+## Mode automatique avec clé API (facultatif, payant)
+
+Ce mode génère l'image sans quitter l'app. Active-le avec le bouton **Auto · clé API** de l'éditeur, puis
+colle une clé dans **Réglages** ([Google AI Studio](https://aistudio.google.com/apikey) ou
+[OpenAI](https://platform.openai.com/api-keys)). **Tester la clé** charge les modèles disponibles, et le
+choix **Automatique** prend le modèle d'image « flash » le plus récent.
+
+**Coûts.** Sans facturation activée sur ton compte Google, rien ne peut t'être facturé, mais la génération
+d'images ne semble pas incluse dans le quota gratuit de l'API
+([forum Google](https://discuss.ai.google.dev/t/free-tier-api-image-generation/177423)). Avec facturation,
+chaque image est payante : vérifie les tarifs à jour ([Gemini](https://ai.google.dev/gemini-api/docs/pricing),
+[OpenAI](https://openai.com/api/pricing/)).
 
 **Confidentialité.** La clé est enregistrée dans le navigateur de ton appareil et envoyée uniquement à
-Google ou OpenAI, directement depuis le téléphone. Aucun serveur intermédiaire.
+Google ou OpenAI, directement depuis le téléphone.
 
 ## Bon à savoir
 

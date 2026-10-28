@@ -161,6 +161,45 @@ export function buildPrompt(preset, { cardName, typeLine, useTheme, extra, ratio
   return lines.join('\n');
 }
 
+// Version française, à coller dans l'app Gemini (mode gratuit). Les images y sont décrites
+// plutôt que numérotées, l'ordre des pièces jointes n'étant pas garanti.
+export function buildPromptFr(preset, { cardName, typeLine, useTheme, extra, ratioLabel }) {
+  const lines = [];
+  if (preset === 'style') {
+    lines.push(
+      'Je t’envoie deux images : une illustration officielle de carte à jouer fantasy, et une photo personnelle.',
+      'Repeins ma photo comme une nouvelle illustration de carte fantasy, exactement dans le style artistique de l’illustration : même technique picturale, coups de pinceau, palette de couleurs, lumière, niveau de détail et ambiance.',
+      'Garde les sujets, les poses et la composition de ma photo bien reconnaissables. Ne copie pas le contenu de l’illustration, seulement son style.',
+    );
+  } else if (preset === 'fusion') {
+    lines.push(
+      'Je t’envoie deux images : une illustration officielle de carte à jouer fantasy, et une photo personnelle.',
+      'Intègre le sujet principal de ma photo dans la scène de l’illustration, comme personnage central, comme si l’artiste d’origine l’avait peint.',
+      'Garde le décor, la composition, la lumière et le style de l’illustration. Adapte l’éclairage, la tenue et la pose du sujet pour qu’il s’intègre naturellement, tout en restant reconnaissable.',
+    );
+  } else if (preset === 'fantasy') {
+    lines.push(
+      'Transforme cette photo en illustration épique de carte à jouer fantasy : peinture numérique, lumière dramatique et cinématographique, riche en détails, dans la tradition des illustrations de jeux de cartes fantasy classiques.',
+      'Garde les sujets reconnaissables.',
+    );
+  } else {
+    lines.push(
+      'Voici une illustration officielle de carte à jouer fantasy.',
+      'Réinterprète-la en une nouvelle illustration : garde son sujet et sa composition reconnaissables, mais change le traitement artistique selon les instructions ci-dessous.',
+    );
+    if (!extra) lines.push('Utilise un style pictural nouveau.');
+  }
+  if (useTheme && cardName) {
+    lines.push(`La carte s’appelle « ${cardName} »${typeLine ? ` (${typeLine})` : ''} : que l’ambiance évoque son thème.`);
+  }
+  if (extra) lines.push(`Instructions supplémentaires : ${extra}`);
+  lines.push(
+    `Format paysage (environ ${ratioLabel}, largeur:hauteur), l’image doit remplir tout le cadre.`,
+    'Aucun texte, lettre, chiffre, logo, signature, filigrane, cadre ou bordure de carte.',
+  );
+  return lines.join('\n');
+}
+
 // ---------- Génération ----------
 
 const GEMINI_RATIOS = ['1:1', '5:4', '4:3', '3:2', '16:9', '21:9', '4:5', '3:4', '2:3', '9:16'];

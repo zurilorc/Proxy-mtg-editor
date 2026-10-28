@@ -13,6 +13,7 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); 
   const browser = await chromium.launch();
   const context = await browser.newContext({ ...devices['iPhone 13'], acceptDownloads: true });
   await install(context);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(BASE).origin });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -99,6 +100,26 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); 
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/05-adjust.png` });
 
+  // --- Mode gratuit : app Gemini (par défaut)
+  check(!(await page.isHidden('#ai-app')) && (await page.isHidden('#ai-api')), 'mode gratuit app Gemini affiché par défaut');
+  const gmPrompt = await page.inputValue('#gm-prompt');
+  check(gmPrompt.includes('Repeins ma photo') && gmPrompt.includes('Sol Ring'), 'consignes en français avec le nom de la carte');
+  await page.fill('#ai-extra', 'ciel étoilé');
+  await page.waitForTimeout(400);
+  check((await page.inputValue('#gm-prompt')).includes('ciel étoilé'), 'consignes mises à jour avec les instructions');
+  const downloads = [];
+  page.on('download', (d) => downloads.push(d.suggestedFilename()));
+  await page.click('#gm-send');
+  await page.waitForTimeout(1500);
+  check(downloads.includes('1-illustration-originale.jpg') && downloads.includes('2-ma-photo.jpg'), `2 images envoyées (${downloads.join(', ')})`);
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  check(clip.includes('ciel étoilé') && clip.includes('Aucun texte'), 'consignes copiées dans le presse-papiers');
+  await page.setInputFiles('#gm-import', path.join(__dirname, 'assets/ai.png'));
+  await page.waitForFunction(() => [...document.querySelectorAll('#ed-sources .src.on span')].some((s) => s.textContent === 'Gemini'));
+  check(true, 'résultat Gemini importé et sélectionné');
+  await page.screenshot({ path: `${OUT}/05b-gemini-app.png`, fullPage: true });
+  await page.fill('#ai-extra', '');
+
   // --- Réglages IA
   await page.click('a[data-tab="settings"]');
   await page.fill('#set-key', 'TEST-KEY');
@@ -108,12 +129,13 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); 
   check(opts[0].includes('gemini-2.5-flash-image') && opts.length === 3, `modèles d’image listés : ${opts.join(' | ')}`);
   await page.screenshot({ path: `${OUT}/06-settings.png`, fullPage: true });
 
-  // --- Génération IA
+  // --- Génération IA (mode clé API)
   await page.click('a[data-tab="editor"]');
+  await page.click('#ai-mode [data-mode="api"]');
   check(!(await page.isDisabled('#ai-go')), 'bouton Générer actif');
   await page.fill('#ai-extra', 'ambiance nocturne');
   await page.click('#ai-go');
-  await page.waitForSelector('#ed-sources .src:nth-child(3).on', { timeout: 15000 });
+  await page.waitForFunction(() => [...document.querySelectorAll('#ed-sources .src.on span')].some((s) => s.textContent.startsWith('IA')), null, { timeout: 15000 });
   const g = log.gemini[0];
   check(g && g.url.endsWith('gemini-2.5-flash-image:generateContent'), `appel Gemini sur le bon modèle (${g?.url})`);
   const parts = g.body.contents[0].parts;

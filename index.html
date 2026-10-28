@@ -185,19 +185,50 @@
           </div>
 
           <div class="panel ai-panel">
-            <h3>Mélange IA <span class="tag" id="ai-model-tag"></span></h3>
-            <p id="ai-nokey" class="note" hidden>Ajoute ta clé API dans <a href="#settings">Réglages</a> pour activer l’IA.</p>
+            <h3>Mélange IA</h3>
+            <div class="seg seg-inline" id="ai-mode" role="tablist" aria-label="Mode IA">
+              <button type="button" data-mode="app" class="on">Gratuit · app Gemini</button>
+              <button type="button" data-mode="api">Auto · clé API</button>
+            </div>
             <div id="ai-presets" class="presets" role="radiogroup" aria-label="Type de mélange"></div>
             <p id="ai-hint" class="muted small"></p>
             <label class="check"><input type="checkbox" id="ai-theme" checked> S’inspirer du thème de la carte</label>
             <label>Instructions en plus (facultatif)
               <textarea id="ai-extra" rows="2" placeholder="ex. ambiance nocturne, style estampe japonaise…"></textarea>
             </label>
-            <div class="btn-row">
-              <button type="button" id="ai-go" class="btn primary grow">Générer</button>
-              <button type="button" id="ai-cancel" class="btn ghost" hidden>Annuler</button>
+
+            <div id="ai-app">
+              <ol class="steps">
+                <li>
+                  <button type="button" id="gm-send" class="btn primary">Envoyer les images</button>
+                  <span class="small muted">Les consignes sont copiées automatiquement. Dans la feuille de partage, choisis <strong>Gemini</strong> s’il apparaît, sinon <strong>Enregistrer les images</strong>.</span>
+                </li>
+                <li>
+                  <a id="gm-open" class="btn" href="https://gemini.google.com/app" target="_blank" rel="noopener">Ouvrir Gemini</a>
+                  <span class="small muted">Ajoute les 2 images si elles n’y sont pas déjà, <strong>colle les consignes</strong> et envoie.</span>
+                </li>
+                <li>
+                  <label class="btn file-btn">Importer le résultat<input id="gm-import" type="file" accept="image/*"></label>
+                  <span class="small muted">Enregistre l’image créée par Gemini dans tes photos, puis importe-la ici.</span>
+                </li>
+              </ol>
+              <details class="prompt-box">
+                <summary>Voir les consignes</summary>
+                <textarea id="gm-prompt" rows="7" readonly></textarea>
+                <button type="button" id="gm-copy" class="btn small">Copier les consignes</button>
+              </details>
+              <p class="note">Gratuit avec ton compte Google, dans la limite du quota quotidien de l’app Gemini. Si l’image porte un petit logo dans un coin, zoome légèrement pour le sortir du cadre.</p>
             </div>
-            <p id="ai-status" class="muted small" aria-live="polite"></p>
+
+            <div id="ai-api" hidden>
+              <p id="ai-nokey" class="note" hidden>Ajoute ta clé API dans <a href="#settings">Réglages</a> pour utiliser ce mode. Il est payant à l’usage, sauf si ta clé dispose d’un quota gratuit.</p>
+              <p class="small muted"><span class="tag" id="ai-model-tag"></span></p>
+              <div class="btn-row">
+                <button type="button" id="ai-go" class="btn primary grow">Générer</button>
+                <button type="button" id="ai-cancel" class="btn ghost" hidden>Annuler</button>
+              </div>
+              <p id="ai-status" class="muted small" aria-live="polite"></p>
+            </div>
           </div>
 
           <div class="panel">
@@ -258,7 +289,8 @@
     <section class="view" data-view="settings" id="view-settings">
       <h2>Réglages</h2>
       <div class="panel">
-        <h3>IA (mélange d’images)</h3>
+        <h3>IA : mode automatique (facultatif)</h3>
+        <p class="small muted">Par défaut, l’éditeur passe par l’app Gemini, gratuite. Ce réglage ne sert qu’au mode « Auto · clé API », qui génère l’image sans quitter l’app mais qui est facturé à l’usage par Google ou OpenAI (sauf quota gratuit sur ta clé).</p>
         <label>Fournisseur
           <select id="set-provider">
             <option value="gemini">Google Gemini</option>
@@ -339,7 +371,7 @@
   <dialog id="ready-dialog" aria-labelledby="ready-title">
     <div class="dialog-body">
       <h3 id="ready-title">Fichier prêt</h3>
-      <p class="muted small"><span id="ready-name"></span> est prêt à être partagé ou enregistré.</p>
+      <p class="muted small">Prêt à partager ou enregistrer : <span id="ready-name"></span>.</p>
       <div class="actions">
         <button type="button" id="ready-close" class="btn ghost">Fermer</button>
         <button type="button" id="ready-share" class="btn primary">Partager / enregistrer</button>

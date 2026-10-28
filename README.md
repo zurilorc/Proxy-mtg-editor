@@ -27,22 +27,27 @@ avec **ta propre illustration**. Tout le reste de la carte (cadre, texte, symbol
 - **Import de decklist** (Moxfield, Archidekt, MTG Arena…), avec option pour ignorer les terrains de base.
 - **Sauvegarde locale** : la planche et la carte en cours sont conservées sur l'appareil, même après fermeture.
 
-## Mettre l'app en ligne (5 minutes, gratuit)
+## Mettre l'app en ligne (gratuit)
 
-L'app est un simple site statique. Le plus simple est de l'héberger avec GitHub Pages :
+L'app est un simple site statique, sans serveur ni étape de build.
 
-1. Sur GitHub, ouvre le dépôt **aivlis-code/Museum_application** puis **Settings → Pages**.
-2. Dans **Build and deployment → Source**, choisis **Deploy from a branch**.
-3. Dans **Branch**, choisis `claude/magic-proxy-generator-rgt9ef` (ou `master` une fois la branche
-   fusionnée), dossier `/ (root)`, puis **Save**.
-4. Une à deux minutes plus tard, l'app est disponible sur
-   **https://aivlis-code.github.io/Museum_application/magic-proxy/**
+**Option A : GitHub Pages.** Gratuit pour un dépôt public ; pour un dépôt privé, GitHub Pages demande un
+abonnement payant ([doc GitHub](https://docs.github.com/en/pages/getting-started-with-github-pages/about-github-pages)).
 
-Sur iPhone : ouvre ce lien dans Safari, puis **Partager → Sur l'écran d'accueil**. L'app s'ouvre ensuite
+1. Rends le dépôt public : **Settings → General → Danger Zone → Change visibility**.
+2. **Settings → Pages → Build and deployment → Source : Deploy from a branch**, choisis la branche qui
+   contient l'app (par exemple `main`), dossier `/ (root)`, puis **Save**.
+3. Une à deux minutes plus tard, l'app est disponible sur **https://zurilorc.github.io/Proxy-mtg-editor/**
+
+**Option B : garder le dépôt privé.** Des hébergeurs comme Cloudflare Pages ou Netlify publient
+gratuitement un site depuis un dépôt GitHub privé : connecte le dépôt, laisse la commande de build vide
+et publie la racine du dépôt.
+
+Sur iPhone : ouvre le lien dans Safari, puis **Partager → Sur l'écran d'accueil**. L'app s'ouvre ensuite
 en plein écran comme une vraie application. Sur Android : menu ⋮ de Chrome → **Ajouter à l'écran d'accueil**.
 
-> Le dépôt est public : n'importe qui peut ouvrir l'app, mais ta clé API et tes cartes restent stockées
-> uniquement sur ton téléphone.
+> Si le site est public, n'importe qui peut ouvrir l'app, mais ta clé API éventuelle et tes cartes restent
+> stockées uniquement sur ton téléphone.
 
 ## Mélange IA gratuit avec l'app Gemini (mode par défaut)
 
@@ -99,8 +104,7 @@ du texte.
 Aucune dépendance ni étape de build : HTML, CSS et modules JavaScript.
 
 ```bash
-cd magic-proxy
-python3 -m http.server 8765      # puis ouvrir http://localhost:8765
+python3 -m http.server 8765      # à la racine du dépôt, puis ouvrir http://localhost:8765
 ```
 
 Tests de bout en bout (Scryfall et Gemini simulés, cartes synthétiques), avec Playwright et Pillow

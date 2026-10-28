@@ -122,20 +122,38 @@ export const PRESETS = {
   },
 };
 
-export function buildPrompt(preset, { cardName, typeLine, useTheme, extra, ratioLabel }) {
+/**
+ * Consignes en anglais pour les modèles d'image.
+ * layout : comment les images arrivent au modèle.
+ *   'labeled'    : chaque image est précédée d'un libellé (Gemini) ;
+ *   'ordered'    : images séparées, dans l'ordre illustration puis photo (OpenAI, Hugging Face) ;
+ *   'sideBySide' : une seule image avec l'illustration à gauche et la photo à droite.
+ */
+export function buildPrompt(preset, { cardName, typeLine, useTheme, extra, ratioLabel, layout = 'labeled' }) {
   const lines = [];
+  const two = PRESETS[preset].usesArt && PRESETS[preset].needsPhoto;
+  if (two) {
+    const roles =
+      preset === 'style'
+        ? ['an official fantasy trading-card illustration (use it ONLY as the style reference)', 'a personal photo (it defines the content)']
+        : ['an official fantasy trading-card illustration', 'a personal photo'];
+    if (layout === 'sideBySide') {
+      lines.push(`The input picture shows two images side by side: on the LEFT ${roles[0]}, on the RIGHT ${roles[1]}.`);
+    } else if (layout === 'ordered') {
+      lines.push(`The first image is ${roles[0]}. The second image is ${roles[1]}.`);
+    } else {
+      lines.push(`You receive two images: ${roles[0]}, and ${roles[1]}.`);
+    }
+  }
   if (preset === 'style') {
     lines.push(
-      'IMAGE A is an official fantasy trading-card illustration: use it ONLY as the style reference.',
-      'IMAGE B is a personal photo: it defines the content.',
-      'Repaint IMAGE B as a brand-new fantasy trading-card illustration in the exact artistic style of IMAGE A: same medium and brushwork, color palette, lighting, contrast, level of detail and atmosphere.',
-      'Keep the subjects, poses and overall composition of IMAGE B clearly recognizable (people, animals, vehicles and objects must stay identifiable). Do not copy the content of IMAGE A, only its style.',
+      'Repaint the personal photo as a brand-new fantasy trading-card illustration in the exact artistic style of the card illustration: same medium and brushwork, color palette, lighting, contrast, level of detail and atmosphere.',
+      'Keep the subjects, poses and overall composition of the photo clearly recognizable (people, animals, vehicles and objects must stay identifiable). Do not copy the content of the card illustration, only its style.',
     );
   } else if (preset === 'fusion') {
     lines.push(
-      'IMAGE A is an official fantasy trading-card illustration. IMAGE B is a personal photo.',
-      'Take the main subject of IMAGE B and integrate it into the scene of IMAGE A as the central figure, as if the original artist had painted it there.',
-      "Keep IMAGE A's setting, composition, lighting and painting style. Adapt the subject's lighting, outfit and pose so it belongs naturally in the scene, while keeping it recognizable.",
+      'Take the main subject of the personal photo and integrate it into the scene of the card illustration as the central figure, as if the original artist had painted it there.',
+      "Keep the card illustration's setting, composition, lighting and painting style. Adapt the subject's lighting, outfit and pose so it belongs naturally in the scene, while keeping it recognizable.",
     );
   } else if (preset === 'fantasy') {
     lines.push(
@@ -145,7 +163,7 @@ export function buildPrompt(preset, { cardName, typeLine, useTheme, extra, ratio
     );
   } else {
     lines.push(
-      'IMAGE A is an official fantasy trading-card illustration.',
+      'The image is an official fantasy trading-card illustration.',
       'Re-imagine it as a new illustration: keep its subject and composition recognizable, but change the artistic treatment according to the instructions below.',
     );
     if (!extra) lines.push('Use a fresh, painterly style.');
@@ -154,6 +172,7 @@ export function buildPrompt(preset, { cardName, typeLine, useTheme, extra, ratio
     lines.push(`The card is "${cardName}"${typeLine ? ` (${typeLine})` : ''}. Let the mood and any added elements evoke this card's theme.`);
   }
   if (extra) lines.push(`Additional instructions from the user (they may be written in French): ${extra}`);
+  if (two && layout === 'sideBySide') lines.push('Output only the new illustration as one single picture, not side by side.');
   lines.push(
     `Output one finished illustration in landscape orientation (about ${ratioLabel} width:height) that fills the entire frame edge to edge.`,
     'Absolutely no text, letters, numbers, logos, signatures, watermarks, card frames or borders.',
@@ -275,8 +294,7 @@ async function generateGemini({ key, model, prompt, images, ratio, signal }) {
 async function generateOpenAI({ key, model, prompt, images, ratio, quality, signal }) {
   const fd = new FormData();
   fd.append('model', model);
-  const labels = images.map((im, i) => `${im.label} is the ${['first', 'second', 'third'][i]} image`).join('; ');
-  fd.append('prompt', images.length ? `${labels}.\n${prompt}` : prompt);
+  fd.append('prompt', prompt);
   images.forEach((im, i) => fd.append('image[]', im.blob, `image-${i + 1}.jpg`));
   fd.append('size', ratio >= 1.2 ? '1536x1024' : ratio <= 0.83 ? '1024x1536' : '1024x1024');
   fd.append('quality', quality);

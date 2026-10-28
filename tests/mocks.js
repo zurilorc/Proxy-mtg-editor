@@ -1,6 +1,7 @@
 // Faux Scryfall + faux Gemini pour tester l'app sans réseau.
 const fs = require('fs');
 const path = require('path');
+const path_ = path;
 const A = path.join(__dirname, 'assets');
 
 const imgs = (n) => ({
@@ -25,7 +26,8 @@ const FR = [card('m15fr-1', { set: 'c21', setName: 'Commander 2021', date: '2021
 const SIGNET = card('signet-1', { oracle: 'oracle-signet', name: 'Arcane Signet', set: 'cmr', setName: 'Commander Legends', date: '2020-11-20', img: 'm15', cn: '297' });
 const FOREST = card('forest-1', { oracle: 'oracle-forest', name: 'Forest', set: 'dmu', setName: 'Dominaria United', date: '2022-09-09', img: 'old', type: 'Basic Land — Forest' });
 
-const log = { gemini: [], scryfall: [] };
+const log = { gemini: [], scryfall: [], hf: [] };
+const flags = { hfQuota: false };
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 const json = (route, body, status = 200) => route.fulfill({ status, headers: { ...cors, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const list = (data) => ({ object: 'list', total_cards: data.length, has_more: false, data });
@@ -72,6 +74,79 @@ async function install(context) {
     }
     return json(r, { object: 'error', code: 'not_found' }, 404);
   });
+  // --- Faux Hugging Face : un Space multi-images (Gallery) et un Space à image unique.
+  const SPACES = {
+    'Qwen/Qwen-Image-Edit-2509': {
+      host: 'https://qwen-qwen-image-edit-2509.hf.space',
+      endpoints: {
+        '/infer': {
+          parameters: [
+            { label: 'Input images', parameter_name: 'images', component: 'Gallery', parameter_has_default: false },
+            { label: 'Prompt', parameter_name: 'prompt', component: 'Textbox', parameter_has_default: false },
+            { label: 'Seed', parameter_name: 'seed', component: 'Slider', parameter_has_default: true, parameter_default: 0 },
+            { label: 'Randomize seed', parameter_name: 'randomize_seed', component: 'Checkbox', parameter_has_default: true, parameter_default: false },
+            { label: 'Steps', parameter_name: 'num_inference_steps', component: 'Slider', parameter_has_default: true, parameter_default: 40 },
+          ],
+          returns: [{ label: 'Result', component: 'Gallery' }, { label: 'Seed', component: 'Number' }],
+        },
+        '/lambda': { parameters: [], returns: [] },
+      },
+    },
+    'black-forest-labs/FLUX.1-Kontext-Dev': {
+      host: 'https://black-forest-labs-flux-1-kontext-dev.hf.space',
+      endpoints: {
+        '/infer': {
+          parameters: [
+            { label: 'Upload the image for editing', parameter_name: 'input_image', component: 'Image', parameter_has_default: true, parameter_default: null },
+            { label: 'Prompt', parameter_name: 'prompt', component: 'Textbox', parameter_has_default: false },
+            { label: 'Seed', parameter_name: 'seed', component: 'Slider', parameter_has_default: true, parameter_default: 42 },
+            { label: 'Randomize seed', parameter_name: 'randomize_seed', component: 'Checkbox', parameter_has_default: true, parameter_default: false },
+          ],
+          returns: [{ label: 'Result', component: 'Image' }, { label: 'Seed', component: 'Number' }],
+        },
+      },
+    },
+  };
+  await context.route('https://huggingface.co/api/spaces/**', (r) => {
+    if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+    const id = decodeURIComponent(new URL(r.request().url()).pathname.replace('/api/spaces/', ''));
+    const sp = SPACES[id];
+    if (!sp) return json(r, { error: 'Repository not found' }, 404);
+    return json(r, { id, host: sp.host, runtime: { stage: 'RUNNING' } });
+  });
+  for (const [id, sp] of Object.entries(SPACES)) {
+    await context.route(`${sp.host}/**`, async (r) => {
+      const req = r.request();
+      if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
+      const u = new URL(req.url());
+      const path = u.pathname;
+      if (path === '/gradio_api/info') return json(r, { named_endpoints: sp.endpoints, unnamed_endpoints: {} });
+      if (path === '/gradio_api/upload') {
+        const n = log.hf.filter((l) => l.type === 'upload').length;
+        log.hf.push({ type: 'upload', id, size: (req.postDataBuffer() || []).length });
+        return json(r, [`/tmp/gradio/up${n}/file.jpg`]);
+      }
+      if (path === '/gradio_api/call/infer' && req.method() === 'POST') {
+        log.hf.push({ type: 'call', id, body: JSON.parse(req.postData()), auth: req.headers().authorization || '' });
+        return json(r, { event_id: 'ev1' });
+      }
+      if (path === '/gradio_api/call/infer/ev1') {
+        await new Promise((res) => setTimeout(res, 800));
+        const body = flags.hfQuota
+          ? 'event: error\ndata: "You have exceeded your free GPU quota (60s requested vs. 12s left). Try again in 20:12:05"\n\n'
+          : `event: generating\ndata: null\n\nevent: complete\ndata: ${JSON.stringify(
+              id.startsWith('Qwen')
+                ? [[{ image: { path: '/tmp/gradio/out.png', url: `${sp.host}/gradio_api/file=/tmp/gradio/out.png` }, caption: null }], 123]
+                : [{ path: '/tmp/gradio/out.png', url: null }, 123],
+            )}\n\n`;
+        return r.fulfill({ status: 200, headers: { ...cors, 'Content-Type': 'text/event-stream' }, body });
+      }
+      if (path.startsWith('/gradio_api/file=')) {
+        return r.fulfill({ status: 200, headers: { ...cors, 'Content-Type': 'image/png' }, body: fs.readFileSync(path_.join(A, 'ai.png')) });
+      }
+      return json(r, { detail: 'Not Found' }, 404);
+    });
+  }
   await context.route('https://generativelanguage.googleapis.com/**', async (r) => {
     const req = r.request();
     if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: cors });
@@ -91,4 +166,4 @@ async function install(context) {
     return json(r, { candidates: [{ content: { parts: [{ text: 'Voici.' }, { inlineData: { mimeType: 'image/png', data: fs.readFileSync(path.join(A, 'ai.png')).toString('base64') } }] } }] });
   });
 }
-module.exports = { install, log };
+module.exports = { install, log, flags };

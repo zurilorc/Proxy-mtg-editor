@@ -18,9 +18,9 @@ avec **ta propre illustration**. Tout le reste de la carte (cadre, texte, symbol
   - ta photo transformée en art fantasy ;
   - l'illustration originale réinterprétée selon tes instructions (ex. « style estampe japonaise »).
 
-  Par défaut, c'est **gratuit via l'app Gemini** : l'app prépare les images et les consignes, tu génères
-  dans Gemini, puis tu réimportes le résultat. Un mode automatique avec clé API (Gemini ou OpenAI)
-  existe aussi, mais il est payant à l'usage.
+  Un seul bouton **Générer** : par défaut, l'image est créée **gratuitement** par un modèle ouvert hébergé
+  sur Hugging Face, sans quitter l'app. Une clé Gemini ou OpenAI peut le remplacer dans les réglages.
+  Si le quota gratuit du jour est épuisé, un secours passe par l'app Gemini.
 - **Planche d'impression** avec quantités : PDF A4 (ou US Letter), 9 cartes par page au format réel
   63 × 88 mm, traits de coupe et espacement réglable.
 - **Partage** de chaque carte en image PNG (feuille de partage du téléphone).
@@ -49,35 +49,48 @@ en plein écran comme une vraie application. Sur Android : menu ⋮ de Chrome �
 > Si le site est public, n'importe qui peut ouvrir l'app, mais ta clé API éventuelle et tes cartes restent
 > stockées uniquement sur ton téléphone.
 
-## Mélange IA gratuit avec l'app Gemini (mode par défaut)
+## Générer l'illustration avec l'IA
 
-Il te faut seulement l'app Gemini (ou gemini.google.com) avec ton compte Google. Aucune clé, aucune facturation.
+Dans l'éditeur, ajoute ta photo, choisis un type de mélange, ajoute éventuellement des instructions, puis
+touche **Générer**. L'image arrive directement dans l'app ; il ne reste qu'à la cadrer.
 
-1. Dans l'éditeur, ajoute ta photo, choisis un type de mélange et, si tu veux, des instructions.
-2. **Envoyer les images** : les consignes sont copiées dans le presse-papiers et la feuille de partage
-   s'ouvre. Choisis **Gemini** s'il apparaît, sinon **Enregistrer les images**.
-3. **Ouvrir Gemini** : ajoute les deux images si elles n'y sont pas déjà, colle les consignes et envoie.
-4. Enregistre l'image créée par Gemini, puis **Importer le résultat** dans l'app et cadre-la.
+### Moteur gratuit : Hugging Face (par défaut)
 
-L'app Gemini applique un quota quotidien d'images gratuites, que Google ajuste régulièrement
-([aide Google](https://support.google.com/gemini/answer/14286560)). Si l'image porte un petit logo dans un
-coin, zoome légèrement pour le sortir du cadre.
+L'app utilise un modèle d'édition d'image ouvert (Qwen-Image-Edit ou FLUX.1 Kontext) hébergé dans un
+« Space » Hugging Face. Elle lit la description de son interface, et passe automatiquement à un autre modèle
+si le premier ne répond pas.
 
-## Mode automatique avec clé API (facultatif, payant)
+- **Sans compte**, ça fonctionne, mais le quota est très réduit.
+- **Avec un compte gratuit**, crée un jeton de type « Read » sur
+  [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) et colle-le dans
+  **Réglages → Jeton Hugging Face**. La doc indique un quota de calcul de quelques minutes par jour pour un
+  compte gratuit ([doc ZeroGPU](https://huggingface.co/docs/hub/en/spaces-zerogpu)), soit quelques images.
+- La génération prend souvent de 30 s à 2 min, file d'attente comprise.
+- Tu peux imposer un Space précis dans **Réglages → Modèle (Space)**, par exemple
+  `black-forest-labs/FLUX.1-Kontext-Dev`. Si le modèle n'accepte qu'une image, l'app envoie l'illustration
+  et ta photo côte à côte.
 
-Ce mode génère l'image sans quitter l'app. Active-le avec le bouton **Auto · clé API** de l'éditeur, puis
-colle une clé dans **Réglages** ([Google AI Studio](https://aistudio.google.com/apikey) ou
-[OpenAI](https://platform.openai.com/api-keys)). **Tester la clé** charge les modèles disponibles, et le
-choix **Automatique** prend le modèle d'image « flash » le plus récent.
+Ta photo est envoyée au Space choisi pour la génération.
 
-**Coûts.** Sans facturation activée sur ton compte Google, rien ne peut t'être facturé, mais la génération
-d'images ne semble pas incluse dans le quota gratuit de l'API
+### Quota épuisé : secours par l'app Gemini
+
+Sous le bouton **Générer**, le bloc « Quota épuisé ? Passer par l'app Gemini » prépare les images et les
+consignes (copiées automatiquement) pour l'app Gemini gratuite. Tu génères dans Gemini, puis tu
+réimportes le résultat. L'app Gemini a son propre quota quotidien
+([aide Google](https://support.google.com/gemini/answer/14286560)).
+
+### Clé Gemini ou OpenAI (facultatif)
+
+Dans **Réglages → Moteur**, choisis Google Gemini ou OpenAI et colle ta clé
+([Google AI Studio](https://aistudio.google.com/apikey), [OpenAI](https://platform.openai.com/api-keys)).
+Sans facturation activée sur ton compte Google, rien ne peut t'être facturé, mais la génération d'images
+ne semble pas incluse dans le quota gratuit de l'API
 ([forum Google](https://discuss.ai.google.dev/t/free-tier-api-image-generation/177423)). Avec facturation,
-chaque image est payante : vérifie les tarifs à jour ([Gemini](https://ai.google.dev/gemini-api/docs/pricing),
-[OpenAI](https://openai.com/api/pricing/)).
+chaque image est payante ([tarifs Gemini](https://ai.google.dev/gemini-api/docs/pricing),
+[tarifs OpenAI](https://openai.com/api/pricing/)).
 
-**Confidentialité.** La clé est enregistrée dans le navigateur de ton appareil et envoyée uniquement à
-Google ou OpenAI, directement depuis le téléphone.
+**Confidentialité.** Clés et jetons restent dans le navigateur de ton appareil et ne sont envoyés qu'au
+service concerné.
 
 ## Bon à savoir
 
@@ -120,7 +133,8 @@ Structure :
 - `js/scryfall.js` : client Scryfall (file d'attente, recherche, éditions par langue).
 - `js/artbox.js` : détection de la zone d'illustration par corrélation (scan complet vs `art_crop`).
 - `js/render.js` : rendu de la carte, retouches et harmonie des couleurs.
-- `js/ai.js` : appels Gemini et OpenAI, choix automatique du modèle, prompts.
+- `js/ai.js` : appels Gemini et OpenAI, choix automatique du modèle, consignes.
+- `js/hf.js` : génération gratuite via un Space Hugging Face (lecture de l'interface, envoi, résultat).
 - `js/pdf.js` : générateur PDF minimal (JPEG intégrés, 3 × 3 cartes, traits de coupe).
 - `js/decklist.js` : lecture des decklists.
 - `js/app.js` : interface.

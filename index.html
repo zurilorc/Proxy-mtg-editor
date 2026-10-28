@@ -186,18 +186,24 @@
 
           <div class="panel ai-panel">
             <h3>Mélange IA</h3>
-            <div class="seg seg-inline" id="ai-mode" role="tablist" aria-label="Mode IA">
-              <button type="button" data-mode="app" class="on">Gratuit · app Gemini</button>
-              <button type="button" data-mode="api">Auto · clé API</button>
-            </div>
             <div id="ai-presets" class="presets" role="radiogroup" aria-label="Type de mélange"></div>
             <p id="ai-hint" class="muted small"></p>
             <label class="check"><input type="checkbox" id="ai-theme" checked> S’inspirer du thème de la carte</label>
             <label>Instructions en plus (facultatif)
               <textarea id="ai-extra" rows="2" placeholder="ex. ambiance nocturne, style estampe japonaise…"></textarea>
             </label>
+            <div class="btn-row">
+              <button type="button" id="ai-go" class="btn primary grow">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 2.1 5.9L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-2.1L12 2Zm7 12 1 2.6 2.6 1-2.6 1L19 21l-1-2.4-2.6-1 2.6-1L19 14Z"/></svg>
+                Générer
+              </button>
+              <button type="button" id="ai-cancel" class="btn ghost" hidden>Annuler</button>
+            </div>
+            <p id="ai-status" class="muted small" aria-live="polite"></p>
+            <p class="small muted">Moteur : <span id="ai-engine"></span> · <a href="#settings">changer</a></p>
 
-            <div id="ai-app">
+            <details id="ai-fallback" class="prompt-box">
+              <summary>Quota épuisé ? Passer par l’app Gemini</summary>
               <ol class="steps">
                 <li>
                   <button type="button" id="gm-send" class="btn primary">Envoyer les images</button>
@@ -212,23 +218,9 @@
                   <span class="small muted">Enregistre l’image créée par Gemini dans tes photos, puis importe-la ici.</span>
                 </li>
               </ol>
-              <details class="prompt-box">
-                <summary>Voir les consignes</summary>
-                <textarea id="gm-prompt" rows="7" readonly></textarea>
-                <button type="button" id="gm-copy" class="btn small">Copier les consignes</button>
-              </details>
-              <p class="note">Gratuit avec ton compte Google, dans la limite du quota quotidien de l’app Gemini. Si l’image porte un petit logo dans un coin, zoome légèrement pour le sortir du cadre.</p>
-            </div>
-
-            <div id="ai-api" hidden>
-              <p id="ai-nokey" class="note" hidden>Ajoute ta clé API dans <a href="#settings">Réglages</a> pour utiliser ce mode. Il est payant à l’usage, sauf si ta clé dispose d’un quota gratuit.</p>
-              <p class="small muted"><span class="tag" id="ai-model-tag"></span></p>
-              <div class="btn-row">
-                <button type="button" id="ai-go" class="btn primary grow">Générer</button>
-                <button type="button" id="ai-cancel" class="btn ghost" hidden>Annuler</button>
-              </div>
-              <p id="ai-status" class="muted small" aria-live="polite"></p>
-            </div>
+              <textarea id="gm-prompt" rows="6" readonly aria-label="Consignes pour Gemini"></textarea>
+              <button type="button" id="gm-copy" class="btn small">Copier les consignes</button>
+            </details>
           </div>
 
           <div class="panel">
@@ -289,34 +281,53 @@
     <section class="view" data-view="settings" id="view-settings">
       <h2>Réglages</h2>
       <div class="panel">
-        <h3>IA : mode automatique (facultatif)</h3>
-        <p class="small muted">Par défaut, l’éditeur passe par l’app Gemini, gratuite. Ce réglage ne sert qu’au mode « Auto · clé API », qui génère l’image sans quitter l’app mais qui est facturé à l’usage par Google ou OpenAI (sauf quota gratuit sur ta clé).</p>
-        <label>Fournisseur
-          <select id="set-provider">
-            <option value="gemini">Google Gemini</option>
-            <option value="openai">OpenAI</option>
+        <h3>Génération d’images</h3>
+        <label>Moteur du bouton « Générer »
+          <select id="set-engine">
+            <option value="free">Gratuit · Hugging Face (quota quotidien)</option>
+            <option value="gemini">Google Gemini (clé API)</option>
+            <option value="openai">OpenAI (clé API, payant)</option>
           </select>
         </label>
-        <label>Clé API
-          <span class="inline">
-            <input id="set-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle ta clé ici">
-            <button type="button" id="set-key-toggle" class="btn small">Voir</button>
-          </span>
-        </label>
-        <p class="small"><a id="set-key-link" href="#" target="_blank" rel="noopener">Obtenir une clé</a></p>
-        <button type="button" id="set-test" class="btn">Tester la clé et charger les modèles</button>
-        <p id="set-test-status" class="muted small" aria-live="polite"></p>
-        <label>Modèle
-          <select id="set-model"></select>
-        </label>
-        <label id="set-quality-wrap">Qualité (OpenAI)
-          <select id="set-quality">
-            <option value="low">Basse (moins chère)</option>
-            <option value="medium">Moyenne</option>
-            <option value="high">Haute (plus chère)</option>
-          </select>
-        </label>
-        <p class="note">La clé reste sur cet appareil et n’est envoyée qu’à Google ou OpenAI. Chaque image générée est facturée sur ton compte selon leurs tarifs. N’utilise pas cette page avec ta clé sur un appareil partagé.</p>
+
+        <div id="set-free">
+          <p class="small muted">Gratuit, sans carte bancaire : l’image est générée par un modèle ouvert hébergé sur Hugging Face. Sans compte, le quota est très réduit ; avec un compte gratuit et son jeton, tu as droit à quelques images par jour.</p>
+          <label>Jeton Hugging Face (facultatif, recommandé)
+            <span class="inline">
+              <input id="set-hf-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="hf_…">
+              <button type="button" id="set-hf-toggle" class="btn small">Voir</button>
+            </span>
+          </label>
+          <p class="small"><a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">Créer un compte et un jeton gratuits (type « Read »)</a></p>
+          <label>Modèle (Space Hugging Face)
+            <input id="set-hf-space" type="text" autocapitalize="off" spellcheck="false" placeholder="Automatique">
+          </label>
+          <button type="button" id="set-hf-test" class="btn">Tester le service gratuit</button>
+          <p id="set-hf-status" class="muted small" aria-live="polite"></p>
+        </div>
+
+        <div id="set-api">
+          <label>Clé API
+            <span class="inline">
+              <input id="set-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Colle ta clé ici">
+              <button type="button" id="set-key-toggle" class="btn small">Voir</button>
+            </span>
+          </label>
+          <p class="small"><a id="set-key-link" href="#" target="_blank" rel="noopener">Obtenir une clé</a></p>
+          <button type="button" id="set-test" class="btn">Tester la clé et charger les modèles</button>
+          <p id="set-test-status" class="muted small" aria-live="polite"></p>
+          <label>Modèle
+            <select id="set-model"></select>
+          </label>
+          <label id="set-quality-wrap">Qualité (OpenAI)
+            <select id="set-quality">
+              <option value="low">Basse (moins chère)</option>
+              <option value="medium">Moyenne</option>
+              <option value="high">Haute (plus chère)</option>
+            </select>
+          </label>
+        </div>
+        <p class="note">Clés et jetons restent sur cet appareil et ne sont envoyés qu’au service concerné. Avec une clé Gemini ou OpenAI, chaque image peut être facturée selon leurs tarifs, sauf quota gratuit. N’enregistre pas de clé sur un appareil partagé.</p>
       </div>
       <div class="panel">
         <h3>Cartes</h3>

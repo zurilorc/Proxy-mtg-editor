@@ -6,6 +6,7 @@ import * as sf from './scryfall.js';
 import { detectArtRect, defaultRect } from './artbox.js';
 import { renderCard, artPlacement, sampleBorderColor, adjustArt } from './render.js';
 import * as ai from './ai.js';
+import * as hf from './hf.js';
 import { buildPdf, PER_PAGE } from './pdf.js';
 import { parseDecklist, matchEntry, norm } from './decklist.js';
 
@@ -19,7 +20,10 @@ const settings = {
   model: { gemini: 'auto', openai: 'auto' },
   models: { gemini: [], openai: [] },
   quality: 'medium',
-  aiMode: 'app', // 'app' = app Gemini gratuite, 'api' = génération automatique avec clé
+  engine: 'free', // moteur du bouton « Générer » : 'free' (Hugging Face), 'gemini' ou 'openai'
+  hfToken: '',
+  hfSpace: '', // vide = choix automatique
+  hfCtx: null, // dernier Space utilisable trouvé (évite de le rechercher à chaque fois)
   lang: 'fr',
   proxyMark: true,
   ...storage.get('pf-settings', {}),
@@ -557,7 +561,7 @@ async function importImage(input, kind, label, message) {
     // On ré-encode en JPEG raisonnable : plus léger à stocker et à envoyer à l'IA.
     const img = await blobToImage(file);
     const blob = await canvasToBlob(downscale(img, 2048), 'image/jpeg', 0.92);
-    const n = ed.sources.filter((s) => s.kind === kind).length + 1;
+    const n = ed.sources.filter((s) => s.label.startsWith(label)).length + 1;
     await addSource(blob, kind, n > 1 ? `${label} ${n}` : label);
     toast(message, 'ok');
   } catch (err) {
@@ -897,21 +901,16 @@ function renderPresets() {
   $('#ai-hint').textContent = ai.PRESETS[ed.aiPreset].hint;
 }
 
+const ENGINE_LABELS = { free: 'gratuit (Hugging Face)', gemini: 'Google Gemini (clé API)', openai: 'OpenAI (clé API)' };
+
 function refreshAiPanel() {
-  const mode = settings.aiMode === 'api' ? 'api' : 'app';
-  $$('#ai-mode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
-  $('#ai-app').hidden = mode !== 'app';
-  $('#ai-api').hidden = mode !== 'api';
-  if (mode === 'app') refreshGemini();
-  const key = settings.keys[settings.provider];
-  $('#ai-nokey').hidden = !!key;
-  $('#ai-go').disabled = !key;
-  const m = settings.model[settings.provider];
-  $('#ai-model-tag').textContent = key ? `${ai.PROVIDERS[settings.provider].label}${m && m !== 'auto' ? ` · ${m}` : ''}` : '';
+  const engine = settings.engine;
+  const missingKey = engine !== 'free' && !settings.keys[engine];
+  $('#ai-engine').textContent = `${ENGINE_LABELS[engine] || engine}${missingKey ? ' — clé manquante' : ''}`;
+  refreshGemini();
 }
 
-async function resolveModel() {
-  const p = settings.provider;
+async function resolveModel(p) {
   if (settings.model[p] && settings.model[p] !== 'auto') return settings.model[p];
   if (!settings.models[p]?.length) {
     try {
@@ -928,11 +927,71 @@ async function toJpeg(img, maxDim) {
   return canvasToBlob(downscale(img, maxDim), 'image/jpeg', 0.9);
 }
 
+// Illustration à gauche, photo à droite : pour les modèles qui n'acceptent qu'une image.
+async function sideBySide(a, b) {
+  const H = 768;
+  const da = dims(a);
+  const db = dims(b);
+  const wa = Math.round((da.w * H) / da.h);
+  const wb = Math.round((db.w * H) / db.h);
+  const c = makeCanvas(wa + wb, H);
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(a, 0, 0, wa, H);
+  ctx.drawImage(b, wa, 0, wb, H);
+  return canvasToBlob(c, 'image/jpeg', 0.9);
+}
+
+async function freeSpace(signal, skip = []) {
+  const wanted = (settings.hfSpace || '').trim();
+  const c = settings.hfCtx;
+  if (c && c.wanted === wanted && !skip.includes(c.id)) return c;
+  const ctx = await hf.resolveSpace(wanted, settings.hfToken, signal, skip);
+  settings.hfCtx = { ...ctx, wanted };
+  saveSettings();
+  return settings.hfCtx;
+}
+
+// Génération gratuite ; en mode automatique, si un Space échoue on passe au suivant.
+async function generateFree(presetId, src, promptOpts, signal, onPhase) {
+  const p = ai.PRESETS[presetId];
+  const two = p.usesArt && p.needsPhoto;
+  const tried = [];
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    onPhase('Connexion au service gratuit…');
+    const ctx = await freeSpace(signal, tried);
+    try {
+      let files = [];
+      let layout = 'ordered';
+      if (two && ctx.maxImages < 2) {
+        files = [toFile(await sideBySide(ed.origArt, src.img), 'references.jpg')];
+        layout = 'sideBySide';
+      } else {
+        if (p.usesArt) files.push(toFile(await toJpeg(ed.origArt, 1024), 'illustration.jpg'));
+        if (p.needsPhoto) files.push(toFile(await toJpeg(src.img, 1024), 'photo.jpg'));
+      }
+      onPhase('Génération gratuite en cours (file d’attente comprise, souvent 30 s à 2 min)…');
+      const prompt = ai.buildPrompt(presetId, { ...promptOpts, layout });
+      const blob = await hf.generateHF({ ctx, token: settings.hfToken, files, prompt, signal });
+      return { blob, via: ctx.id };
+    } catch (e) {
+      if (e.name === 'AbortError' || e.code === 'quota' || (settings.hfSpace || '').trim()) throw e;
+      tried.push(ctx.id);
+      settings.hfCtx = null;
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
 $('#ai-go').addEventListener('click', async () => {
-  const p = settings.provider;
-  const key = settings.keys[p];
-  if (!key) return go('settings');
   if (!ed.base) return;
+  const engine = settings.engine;
+  if (engine !== 'free' && !settings.keys[engine]) {
+    toast('Ajoute ta clé API dans Réglages, ou choisis le moteur gratuit.', 'error');
+    return go('settings');
+  }
   const preset = ai.PRESETS[ed.aiPreset];
   const src = activeSource();
   if (preset.needsPhoto && !src) return toast('Ajoute d’abord une photo (bouton « Ajouter une photo »).', 'error');
@@ -941,52 +1000,62 @@ $('#ai-go').addEventListener('click', async () => {
   const status = $('#ai-status');
   const goBtn = $('#ai-go');
   aiCtrl = new AbortController();
+  const { signal } = aiCtrl;
   goBtn.disabled = true;
   $('#ai-cancel').hidden = false;
   const t0 = Date.now();
-  const tick = setInterval(() => {
-    status.textContent = `Génération en cours… ${Math.round((Date.now() - t0) / 1000)} s (souvent 10 à 60 s)`;
-  }, 500);
+  let phase = 'Génération en cours (souvent 10 à 60 s)…';
+  const tick = () => (status.textContent = `${phase} ${Math.round((Date.now() - t0) / 1000)} s`);
+  tick();
+  const timer = setInterval(tick, 500);
   try {
-    const model = await resolveModel();
-    const images = [];
-    if (preset.usesArt) images.push({ label: 'IMAGE A', blob: await toJpeg(ed.origArt, 1024) });
-    if (preset.needsPhoto) images.push({ label: preset.usesArt ? 'IMAGE B' : 'PHOTO', blob: await toJpeg(src.img, 1536) });
     const f = sf.faces(ed.print)[ed.face] || {};
     const ratio = ed.rect.w / ed.rect.h;
-    const prompt = ai.buildPrompt(ed.aiPreset, {
+    const promptOpts = {
       cardName: f.name || ed.print.name,
       typeLine: f.type_line,
       useTheme: $('#ai-theme').checked,
       extra: $('#ai-extra').value.trim(),
       ratioLabel: ai.closestRatio(ratio),
-    });
-    const blob = await ai.generate({
-      provider: p,
-      key,
-      model,
-      prompt,
-      images,
-      ratio,
-      quality: settings.quality,
-      signal: aiCtrl.signal,
-    });
-    const n = ed.sources.filter((s) => s.kind === 'ai').length + 1;
+    };
+    let blob;
+    let via;
+    if (engine === 'free') {
+      ({ blob, via } = await generateFree(ed.aiPreset, src, promptOpts, signal, (t) => {
+        phase = t;
+        tick();
+      }));
+    } else {
+      const model = await resolveModel(engine);
+      const images = [];
+      if (preset.usesArt) images.push({ label: 'Card illustration', blob: await toJpeg(ed.origArt, 1024) });
+      if (preset.needsPhoto) images.push({ label: 'Personal photo', blob: await toJpeg(src.img, 1536) });
+      const prompt = ai.buildPrompt(ed.aiPreset, { ...promptOpts, layout: engine === 'gemini' ? 'labeled' : 'ordered' });
+      blob = await ai.generate({ provider: engine, key: settings.keys[engine], model, prompt, images, ratio, quality: settings.quality, signal });
+      via = model;
+    }
+    const n = ed.sources.filter((s) => s.label.startsWith('IA')).length + 1;
     await addSource(blob, 'ai', `IA ${n}`);
-    status.textContent = `Image générée avec ${model} en ${Math.round((Date.now() - t0) / 1000)} s.`;
+    clearInterval(timer);
+    status.textContent = `Image générée avec ${via} en ${Math.round((Date.now() - t0) / 1000)} s.`;
     toast('Illustration générée ✓', 'ok');
   } catch (e) {
+    clearInterval(timer);
     if (e.name === 'AbortError') status.textContent = 'Génération annulée.';
-    else {
+    else if (engine === 'free') {
+      status.textContent = `${e.message} En attendant, tu peux passer par l’app Gemini (ci-dessous).`;
+      $('#ai-fallback').open = true;
+      refreshGemini();
+    } else {
       status.textContent = e.message;
       if (e.status === 404) {
-        settings.models[p] = [];
+        settings.models[engine] = [];
         saveSettings();
         status.textContent += ' — Le modèle semble indisponible : va dans Réglages > « Tester la clé » pour en choisir un autre.';
       }
     }
   } finally {
-    clearInterval(tick);
+    clearInterval(timer);
     goBtn.disabled = false;
     $('#ai-cancel').hidden = true;
     aiCtrl = null;
@@ -994,15 +1063,7 @@ $('#ai-go').addEventListener('click', async () => {
 });
 $('#ai-cancel').addEventListener('click', () => aiCtrl?.abort());
 
-$$('#ai-mode button').forEach((b) =>
-  b.addEventListener('click', () => {
-    settings.aiMode = b.dataset.mode;
-    saveSettings();
-    refreshAiPanel();
-  }),
-);
-
-// ----- Mode gratuit : l'utilisateur génère l'image dans l'app Gemini -----
+// ----- Secours : l'utilisateur génère l'image dans l'app Gemini -----
 // Les images sont préparées à l'avance : sur iPhone, le partage doit partir
 // immédiatement après le toucher, sans attente.
 
@@ -1038,14 +1099,16 @@ function geminiPrompt() {
 }
 
 const prefetchGemini = debounce(() => {
-  if (settings.aiMode !== 'api' && ed.base) prepareGeminiFiles().catch(() => {});
+  if ($('#ai-fallback').open && ed.base) prepareGeminiFiles().catch(() => {});
 }, 300);
 
+// Ne prépare les images que si le bloc de secours est ouvert.
 function refreshGemini() {
-  if (settings.aiMode === 'api') return;
+  if (!$('#ai-fallback').open) return;
   $('#gm-prompt').value = geminiPrompt();
   prefetchGemini();
 }
+$('#ai-fallback').addEventListener('toggle', refreshGemini);
 $('#ai-theme').addEventListener('change', refreshGemini);
 $('#ai-extra').addEventListener('input', debounce(refreshGemini, 200));
 
@@ -1081,7 +1144,7 @@ $('#gm-send').addEventListener('click', async () => {
   const r = await offerFiles(files, 'Images pour Gemini');
   const ok = await copied;
   if (r === 'shared' || r === 'downloaded') {
-    toast(ok ? 'Consignes copiées ✓ Ouvre Gemini et colle-les avec les images.' : 'Images prêtes. Copie les consignes depuis « Voir les consignes ».', ok ? 'ok' : 'info', 5000);
+    toast(ok ? 'Consignes copiées ✓ Ouvre Gemini et colle-les avec les images.' : 'Images prêtes. Copie les consignes avec le bouton « Copier les consignes ».', ok ? 'ok' : 'info', 5000);
   }
 });
 
@@ -1383,9 +1446,15 @@ async function addPlainItem(card, qty) {
 // Réglages
 // ============================================================
 
+const apiProvider = () => (settings.engine === 'openai' ? 'openai' : 'gemini');
+
 function renderSettings() {
-  const p = settings.provider;
-  $('#set-provider').value = p;
+  $('#set-engine').value = settings.engine;
+  $('#set-free').hidden = settings.engine !== 'free';
+  $('#set-api').hidden = settings.engine === 'free';
+  $('#set-hf-token').value = settings.hfToken || '';
+  $('#set-hf-space').value = settings.hfSpace || '';
+  const p = apiProvider();
   $('#set-key').value = settings.keys[p] || '';
   $('#set-key-link').href = ai.PROVIDERS[p].keyUrl;
   $('#set-key-link').textContent = `Obtenir une clé ${ai.PROVIDERS[p].label}`;
@@ -1403,16 +1472,45 @@ function renderSettings() {
   $('#set-proxy').checked = settings.proxyMark;
 }
 
-$('#set-provider').addEventListener('change', (e) => {
-  settings.provider = e.target.value;
+$('#set-engine').addEventListener('change', (e) => {
+  settings.engine = e.target.value;
   saveSettings();
   $('#set-test-status').textContent = '';
+  $('#set-hf-status').textContent = '';
   renderSettings();
   refreshAiPanel();
 });
+$('#set-hf-token').addEventListener('change', (e) => {
+  settings.hfToken = e.target.value.trim();
+  saveSettings();
+});
+$('#set-hf-toggle').addEventListener('click', (e) => {
+  const input = $('#set-hf-token');
+  input.type = input.type === 'password' ? 'text' : 'password';
+  e.target.textContent = input.type === 'password' ? 'Voir' : 'Masquer';
+});
+$('#set-hf-space').addEventListener('change', (e) => {
+  settings.hfSpace = e.target.value.trim();
+  settings.hfCtx = null;
+  saveSettings();
+});
+$('#set-hf-test').addEventListener('click', async () => {
+  settings.hfToken = $('#set-hf-token').value.trim();
+  settings.hfSpace = $('#set-hf-space').value.trim();
+  settings.hfCtx = null;
+  saveSettings();
+  const st = $('#set-hf-status');
+  st.textContent = 'Recherche d’un modèle disponible…';
+  try {
+    const ctx = await freeSpace();
+    st.textContent = `Service gratuit prêt ✓ Modèle : ${ctx.id}.${settings.hfToken ? '' : ' Sans jeton, le quota est très réduit.'}`;
+  } catch (e) {
+    st.textContent = e.message;
+  }
+});
 $('#set-key').addEventListener('change', (e) => {
-  settings.keys[settings.provider] = e.target.value.trim();
-  settings.models[settings.provider] = [];
+  settings.keys[apiProvider()] = e.target.value.trim();
+  settings.models[apiProvider()] = [];
   saveSettings();
   renderSettings();
   refreshAiPanel();
@@ -1423,7 +1521,7 @@ $('#set-key-toggle').addEventListener('click', (e) => {
   e.target.textContent = input.type === 'password' ? 'Voir' : 'Masquer';
 });
 $('#set-test').addEventListener('click', async () => {
-  const p = settings.provider;
+  const p = apiProvider();
   settings.keys[p] = $('#set-key').value.trim();
   saveSettings();
   const st = $('#set-test-status');
@@ -1443,7 +1541,7 @@ $('#set-test').addEventListener('click', async () => {
   refreshAiPanel();
 });
 $('#set-model').addEventListener('change', (e) => {
-  settings.model[settings.provider] = e.target.value;
+  settings.model[apiProvider()] = e.target.value;
   saveSettings();
   refreshAiPanel();
 });
@@ -1463,7 +1561,7 @@ $('#set-proxy').addEventListener('change', (e) => {
   draw();
 });
 $('#set-wipe').addEventListener('click', async () => {
-  if (!confirm('Effacer la planche, le brouillon, la clé API et les réglages de cet appareil ?')) return;
+  if (!confirm('Effacer la planche, le brouillon, les clés et les réglages de cet appareil ?')) return;
   storage.remove('pf-settings');
   try {
     await idb.clear('items');

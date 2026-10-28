@@ -1,7 +1,7 @@
 const { chromium, devices } = require('playwright');
 const path = require('path');
 const fs = require('fs');
-const { install, log } = require('./mocks');
+const { install, log, flags } = require('./mocks');
 const BASE = process.env.BASE || 'http://localhost:8765/';
 const OUT = path.join(__dirname, 'out');
 fs.mkdirSync(OUT, { recursive: true });
@@ -100,15 +100,31 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); 
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/05-adjust.png` });
 
-  // --- Mode gratuit : app Gemini (par défaut)
-  check(!(await page.isHidden('#ai-app')) && (await page.isHidden('#ai-api')), 'mode gratuit app Gemini affiché par défaut');
+  // --- Bouton « Générer » gratuit (Hugging Face, Space multi-images)
+  check((await page.textContent('#ai-engine')).startsWith('gratuit'), 'moteur gratuit par défaut');
+  await page.fill('#ai-extra', 'ciel étoilé');
+  await page.click('#ai-go');
+  await page.waitForFunction(() => [...document.querySelectorAll('#ed-sources .src.on span')].some((s) => s.textContent.startsWith('IA')), null, { timeout: 15000 });
+  const hfCall = log.hf.find((l) => l.type === 'call');
+  check(hfCall?.id === 'Qwen/Qwen-Image-Edit-2509', `Space choisi automatiquement (${hfCall?.id}) après un Space introuvable`);
+  const d = hfCall.body.data;
+  check(Array.isArray(d[0]) && d[0].length === 2 && d[0][0].image.meta._type === 'gradio.FileData', 'galerie avec illustration + photo');
+  check(d[1].includes('The first image is') && d[1].includes('ciel étoilé'), 'consigne envoyée au modèle');
+  check(d[2] === 0 && d[3] === true && d[4] === 40, `options par défaut + graine aléatoire (${JSON.stringify(d.slice(2))})`);
+  check((await page.textContent('#ai-status')).includes('Qwen/Qwen-Image-Edit-2509'), 'statut final');
+  await page.screenshot({ path: `${OUT}/05a-free-generate.png`, fullPage: true });
+
+  // --- Quota épuisé : message clair + secours app Gemini ouvert
+  flags.hfQuota = true;
+  await page.click('#ai-go');
+  await page.waitForFunction(() => document.querySelector('#ai-status').textContent.includes('Quota'), null, { timeout: 15000 });
+  check(await page.$eval('#ai-fallback', (el) => el.open), 'secours app Gemini ouvert après quota épuisé');
+  flags.hfQuota = false;
+  await page.waitForFunction(() => document.querySelector('#gm-prompt').value.includes('ciel étoilé'));
   const gmPrompt = await page.inputValue('#gm-prompt');
   check(gmPrompt.includes('Repeins ma photo') && gmPrompt.includes('Sol Ring'), 'consignes en français avec le nom de la carte');
-  await page.fill('#ai-extra', 'ciel étoilé');
-  await page.waitForTimeout(400);
-  check((await page.inputValue('#gm-prompt')).includes('ciel étoilé'), 'consignes mises à jour avec les instructions');
   const downloads = [];
-  page.on('download', (d) => downloads.push(d.suggestedFilename()));
+  page.on('download', (dl) => downloads.push(dl.suggestedFilename()));
   await page.click('#gm-send');
   await page.waitForTimeout(1500);
   check(downloads.includes('1-illustration-originale.jpg') && downloads.includes('2-ma-photo.jpg'), `2 images envoyées (${downloads.join(', ')})`);
@@ -117,11 +133,30 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); 
   await page.setInputFiles('#gm-import', path.join(__dirname, 'assets/ai.png'));
   await page.waitForFunction(() => [...document.querySelectorAll('#ed-sources .src.on span')].some((s) => s.textContent === 'Gemini'));
   check(true, 'résultat Gemini importé et sélectionné');
-  await page.screenshot({ path: `${OUT}/05b-gemini-app.png`, fullPage: true });
   await page.fill('#ai-extra', '');
 
-  // --- Réglages IA
+  // --- Space à image unique : illustration et photo côte à côte
   await page.click('a[data-tab="settings"]');
+  await page.fill('#set-hf-space', 'black-forest-labs/FLUX.1-Kontext-Dev');
+  await page.fill('#set-hf-token', 'hf_test');
+  await page.click('#set-hf-test');
+  await page.waitForFunction(() => document.querySelector('#set-hf-status').textContent.includes('prêt'));
+  check((await page.textContent('#set-hf-status')).includes('FLUX.1-Kontext-Dev'), 'Space personnalisé reconnu');
+  await page.click('a[data-tab="editor"]');
+  await page.click('#ed-sources .src:nth-child(2)');
+  const before = log.hf.filter((l) => l.type === 'upload').length;
+  await page.click('#ai-go');
+  await page.waitForFunction(() => document.querySelector('#ai-status').textContent.includes('FLUX.1-Kontext-Dev'), null, { timeout: 15000 });
+  const kCall = log.hf.filter((l) => l.type === 'call').pop();
+  check(log.hf.filter((l) => l.type === 'upload').length - before === 1 && kCall.body.data[0].path, 'une seule image envoyée (montage côte à côte)');
+  check(kCall.body.data[1].includes('side by side') && kCall.body.data[3] === true, 'consigne « côte à côte » + graine aléatoire');
+  check(kCall.auth === 'Bearer hf_test', 'jeton Hugging Face transmis');
+  await page.click('a[data-tab="settings"]');
+  await page.fill('#set-hf-space', '');
+  await page.dispatchEvent('#set-hf-space', 'change');
+
+  // --- Réglages IA
+  await page.selectOption('#set-engine', 'gemini');
   await page.fill('#set-key', 'TEST-KEY');
   await page.click('#set-test');
   await page.waitForFunction(() => document.querySelector('#set-test-status').textContent.includes('valide'));
@@ -131,11 +166,12 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); 
 
   // --- Génération IA (mode clé API)
   await page.click('a[data-tab="editor"]');
-  await page.click('#ai-mode [data-mode="api"]');
   check(!(await page.isDisabled('#ai-go')), 'bouton Générer actif');
+  check((await page.textContent('#ai-engine')).startsWith('Google Gemini'), 'moteur Gemini affiché');
+  await page.click('#ed-sources .src:nth-child(2)');
   await page.fill('#ai-extra', 'ambiance nocturne');
   await page.click('#ai-go');
-  await page.waitForFunction(() => [...document.querySelectorAll('#ed-sources .src.on span')].some((s) => s.textContent.startsWith('IA')), null, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('#ai-status').textContent.includes('gemini-2.5-flash-image'), null, { timeout: 15000 });
   const g = log.gemini[0];
   check(g && g.url.endsWith('gemini-2.5-flash-image:generateContent'), `appel Gemini sur le bon modèle (${g?.url})`);
   const parts = g.body.contents[0].parts;
